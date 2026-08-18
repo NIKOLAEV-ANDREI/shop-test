@@ -1,0 +1,23 @@
+services:
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: prestashop
+      MYSQL_USER: prestashop
+      MYSQL_PASSWORD: prestashop
+
+  prestashop:
+    image: prestashop/prestashop:1.6-7.2-apache
+    depends_on:
+      - db
+    ports:
+      - "8085:80"
+    environment:
+      DB_SERVER: db
+      DB_NAME: prestashop
+      DB_USER: prestashop
+      DB_PASSWD: prestashop
+      PS_DEV_MODE: "1"
+    volumes:
+      - ./managercomment:/var/www/html/modules/managercomment

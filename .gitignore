@@ -1,0 +1,13 @@
+# Logs
+*.log
+
+# VS Code and other IDE settings
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# PrestaShop module discovery
+managercomment/config.xml
