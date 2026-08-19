@@ -118,6 +118,53 @@ class ManagerComment extends Module
         );
     }
 
+    // ПОЛУЧЕНИЕ ОДНОГО КОММЕНТАРИЯ КОНКРЕТНОГО ЗАКАЗА
+    private function getOrderCommentById($idComment, $idOrder)
+    {
+        $query = new DbQuery();
+
+        $query->select(
+            'mc.id_manager_comment,
+            mc.id_order,
+            mc.id_employee,
+            mc.employee_name,
+            mc.comment,
+            mc.date_add,
+            mc.date_upd'
+        );
+        $query->from('manager_comment', 'mc');
+        $query->where(
+            'mc.id_manager_comment = ' . (int) $idComment
+        );
+        $query->where(
+            'mc.id_order = ' . (int) $idOrder
+        );
+
+        return Db::getInstance()->getRow($query);
+    }
+
+    // ОБНОВЛЕНИЕ СОБСТВЕННОГО КОММЕНТАРИЯ
+    private function updateComment(
+        $idComment,
+        $idOrder,
+        $idEmployee,
+        $comment
+    ) {
+        $where = '`id_manager_comment` = ' . (int) $idComment
+            . ' AND `id_order` = ' . (int) $idOrder
+            . ' AND `id_employee` = ' . (int) $idEmployee;
+
+        return Db::getInstance()->update(
+            'manager_comment',
+            array(
+                'comment' => pSQL($comment),
+                'date_upd' => date('Y-m-d H:i:s'),
+            ),
+            $where,
+            1
+        );
+    }
+
     // ОБРАБОТКА ДОБАВЛЕНИЯ КОММЕНТАРИЯ
     private function processAddComment($idOrder, $comment)
     {
@@ -157,6 +204,60 @@ class ManagerComment extends Module
         return '';
     }
 
+    // ОБРАБОТКА РЕДАКТИРОВАНИЯ КОММЕНТАРИЯ
+    private function processEditComment(
+        $idOrder,
+        $idComment,
+        $comment
+    ) {
+        $idOrder = (int) $idOrder;
+        $idComment = (int) $idComment;
+
+        if ($idOrder <= 0 || $idComment <= 0) {
+            return $this->l('Передан неверный идентификатор комментария.');
+        }
+
+        $employee = $this->context->employee;
+
+        if (!$employee || !Validate::isLoadedObject($employee)) {
+            return $this->l('Не удалось определить текущего сотрудника.');
+        }
+
+        $storedComment = $this->getOrderCommentById(
+            $idComment,
+            $idOrder
+        );
+
+        if (!$storedComment) {
+            return $this->l('Комментарий не найден.');
+        }
+
+        if ((int) $storedComment['id_employee'] !== (int) $employee->id) {
+            return $this->l(
+                'Вы можете редактировать только собственные комментарии.'
+            );
+        }
+
+        $validationError = $this->getCommentValidationError($comment);
+
+        if ($validationError !== '') {
+            return $validationError;
+        }
+
+        $isUpdated = $this->updateComment(
+            $idComment,
+            $idOrder,
+            (int) $employee->id,
+            trim($comment)
+        );
+
+        if (!$isUpdated) {
+            return $this->l('Не удалось обновить комментарий.');
+        }
+
+        return '';
+    }
+
     // ВЫВОД И ОБРАБОТКА КОММЕНТАРИЕВ НА СТРАНИЦЕ ЗАКАЗА
     public function hookDisplayAdminOrder($params)
     {
@@ -167,43 +268,86 @@ class ManagerComment extends Module
         $idOrder = (int) $params['id_order'];
         $errorMessage = '';
         $commentValue = '';
+        $editCommentId = 0;
+        $editCommentValue = '';
 
         $isPostRequest = isset($_SERVER['REQUEST_METHOD'])
             && $_SERVER['REQUEST_METHOD'] === 'POST';
 
-        if ($isPostRequest && Tools::isSubmit('submitManagerComment')) {
-            $submittedComment = Tools::getValue('manager_comment');
+        if ($isPostRequest) {
+            if (Tools::isSubmit('submitManagerComment')) {
+                $submittedComment = Tools::getValue('manager_comment');
 
-            if (is_string($submittedComment)) {
-                $commentValue = $submittedComment;
-            }
+                if (is_string($submittedComment)) {
+                    $commentValue = $submittedComment;
+                }
 
-            $errorMessage = $this->processAddComment(
-                $idOrder,
-                $submittedComment
-            );
+                $errorMessage = $this->processAddComment(
+                    $idOrder,
+                    $submittedComment
+                );
 
-            if ($errorMessage === '') {
-                $redirectUrl = $this->context->link->getAdminLink('AdminOrders')
-                    . '&vieworder'
-                    . '&id_order=' . $idOrder
-                    . '&manager_comment_added=1';
+                if ($errorMessage === '') {
+                    $redirectUrl = $this->context->link
+                        ->getAdminLink('AdminOrders')
+                        . '&vieworder'
+                        . '&id_order=' . $idOrder
+                        . '&manager_comment_added=1';
 
-                Tools::redirectAdmin($redirectUrl);
+                    Tools::redirectAdmin($redirectUrl);
+                }
+            } elseif (Tools::isSubmit('submitManagerCommentEdit')) {
+                $editCommentId = (int) Tools::getValue(
+                    'id_manager_comment'
+                );
+
+                $submittedEditComment = Tools::getValue(
+                    'manager_comment_edit'
+                );
+
+                if (is_string($submittedEditComment)) {
+                    $editCommentValue = $submittedEditComment;
+                }
+
+                $errorMessage = $this->processEditComment(
+                    $idOrder,
+                    $editCommentId,
+                    $submittedEditComment
+                );
+
+                if ($errorMessage === '') {
+                    $redirectUrl = $this->context->link
+                        ->getAdminLink('AdminOrders')
+                        . '&vieworder'
+                        . '&id_order=' . $idOrder
+                        . '&manager_comment_updated=1';
+
+                    Tools::redirectAdmin($redirectUrl);
+                }
             }
         }
 
         $comments = $this->getOrderComments($idOrder);
-
         $successMessage = '';
 
         if (Tools::getValue('manager_comment_added') === '1') {
             $successMessage = $this->l('Комментарий успешно добавлен.');
+        } elseif (Tools::getValue('manager_comment_updated') === '1') {
+            $successMessage = $this->l('Комментарий успешно обновлён.');
         }
 
         $formAction = $this->context->link->getAdminLink('AdminOrders')
             . '&vieworder'
             . '&id_order=' . $idOrder;
+
+        $currentEmployeeId = 0;
+
+        if (
+            $this->context->employee
+            && Validate::isLoadedObject($this->context->employee)
+        ) {
+            $currentEmployeeId = (int) $this->context->employee->id;
+        }
 
         $this->context->smarty->assign(array(
             'manager_comments' => $comments,
@@ -211,6 +355,9 @@ class ManagerComment extends Module
             'manager_comment_success' => $successMessage,
             'manager_comment_value' => $commentValue,
             'manager_comment_form_action' => $formAction,
+            'manager_comment_edit_id' => $editCommentId,
+            'manager_comment_edit_value' => $editCommentValue,
+            'manager_comment_current_employee_id' => $currentEmployeeId,
         ));
 
         return $this->display(
