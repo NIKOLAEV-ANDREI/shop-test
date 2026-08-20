@@ -165,6 +165,67 @@ class ManagerComment extends Module
         );
     }
 
+    // УДАЛЕНИЕ СОБСТВЕННОГО КОММЕНТАРИЯ
+    private function deleteComment(
+        $idComment,
+        $idOrder,
+        $idEmployee
+    ) {
+        $where = '`id_manager_comment` = ' . (int) $idComment
+            . ' AND `id_order` = ' . (int) $idOrder
+            . ' AND `id_employee` = ' . (int) $idEmployee;
+
+        return Db::getInstance()->delete(
+            'manager_comment',
+            $where,
+            1
+        );
+    }
+
+    // ОБРАБОТКА УДАЛЕНИЯ КОММЕНТАРИЯ
+    private function processDeleteComment($idOrder, $idComment)
+    {
+        $idOrder = (int) $idOrder;
+        $idComment = (int) $idComment;
+
+        if ($idOrder <= 0 || $idComment <= 0) {
+            return $this->l('Передан неверный идентификатор комментария.');
+        }
+
+        $employee = $this->context->employee;
+
+        if (!$employee || !Validate::isLoadedObject($employee)) {
+            return $this->l('Не удалось определить текущего сотрудника.');
+        }
+
+        $storedComment = $this->getOrderCommentById(
+            $idComment,
+            $idOrder
+        );
+
+        if (!$storedComment) {
+            return $this->l('Комментарий не найден.');
+        }
+
+        if ((int) $storedComment['id_employee'] !== (int) $employee->id) {
+            return $this->l(
+                'Вы можете удалять только собственные комментарии.'
+            );
+        }
+
+        $isDeleted = $this->deleteComment(
+            $idComment,
+            $idOrder,
+            (int) $employee->id
+        );
+
+        if (!$isDeleted) {
+            return $this->l('Не удалось удалить комментарий.');
+        }
+
+        return '';
+    }
+
     // ОБРАБОТКА ДОБАВЛЕНИЯ КОММЕНТАРИЯ
     private function processAddComment($idOrder, $comment)
     {
@@ -324,6 +385,25 @@ class ManagerComment extends Module
 
                     Tools::redirectAdmin($redirectUrl);
                 }
+            } elseif (Tools::isSubmit('submitManagerCommentDelete')) {
+                $deleteCommentId = (int) Tools::getValue(
+                    'id_manager_comment'
+                );
+
+                $errorMessage = $this->processDeleteComment(
+                    $idOrder,
+                    $deleteCommentId
+                );
+
+                if ($errorMessage === '') {
+                    $redirectUrl = $this->context->link
+                        ->getAdminLink('AdminOrders')
+                        . '&vieworder'
+                        . '&id_order=' . $idOrder
+                        . '&manager_comment_deleted=1';
+
+                    Tools::redirectAdmin($redirectUrl);
+                }
             }
         }
 
@@ -334,6 +414,8 @@ class ManagerComment extends Module
             $successMessage = $this->l('Комментарий успешно добавлен.');
         } elseif (Tools::getValue('manager_comment_updated') === '1') {
             $successMessage = $this->l('Комментарий успешно обновлён.');
+        } elseif (Tools::getValue('manager_comment_deleted') === '1') {
+            $successMessage = $this->l('Комментарий успешно удалён.');
         }
 
         $formAction = $this->context->link->getAdminLink('AdminOrders')

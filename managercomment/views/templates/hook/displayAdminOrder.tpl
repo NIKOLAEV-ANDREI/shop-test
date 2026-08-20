@@ -119,6 +119,28 @@
                             {l s='Сохранить изменения' mod='managercomment'}
                         </button>
                     </form>
+
+                    <form
+                        action="{$manager_comment_form_action|escape:'html':'UTF-8'}"
+                        method="post"
+                        class="form-inline"
+                        onsubmit="return confirm('{l s='Вы уверены, что хотите удалить этот комментарий?' mod='managercomment' js=1}');"
+                    >
+                        <input
+                            type="hidden"
+                            name="id_manager_comment"
+                            value="{$manager_comment.id_manager_comment|intval}"
+                        >
+
+                        <button
+                            type="submit"
+                            name="submitManagerCommentDelete"
+                            class="btn btn-danger"
+                        >
+                            <i class="icon-trash"></i>
+                            {l s='Удалить комментарий' mod='managercomment'}
+                        </button>
+                    </form>
                 {/if}
             </div>
         {/foreach}
